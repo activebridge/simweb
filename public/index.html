@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>simweb</title>
+<style>
+  :root { --bg: #1e1f22; --panel: #2b2d31; --text: #e3e3e3; --dim: #8a8d93; --accent: #e07a5f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, system-ui, sans-serif; height: 100vh; display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; }
+  /* body is the scroller (not the viewport), so the snap and the no-page-scroll rule hold. */
+  html { height: 100%; overflow: hidden; }
+  #left, #phone, #right { scroll-snap-align: start; }
+  .insight .lvl { color: #4fd1c5; }
+  .insight .tag { color: var(--text); }
+  .facts b { color: #4fd1c5; font-weight: 600; }
+  .facts b.hot { color: #f0b54a; }
+  .pill { display: inline-block; background: #2f6f6a55; color: #9ee7df; border: 1px solid #4fd1c555; border-radius: 9px; padding: 0 8px; margin-right: 6px; font-size: 11px; }
+  #left { flex: none; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; border-right: 1px solid #000; }
+  /* Device picker: native <select> in customizable mode (appearance: base-select), so
+     options carry the watch image; other browsers fall back to a plain select. */
+  .device-pick { width: 0; min-width: 100%; }
+  #device, #device::picker(select) { appearance: base-select; }
+  #device { width: 100%; display: flex; align-items: center; background: #1d1f23; color: var(--text); border: 1px solid #ffffff14;
+    border-radius: 12px; padding: 6px 10px; font: 600 14px/1.2 -apple-system, system-ui, sans-serif; cursor: pointer; transition: border-color .15s; }
+  #device:hover, #device:open { border-color: #ffffff2e; }
+  #device:disabled { opacity: .6; cursor: progress; }
+  #device::picker-icon { color: var(--dim); transition: rotate .2s; }
+  #device:open::picker-icon { rotate: 180deg; }
+  #device::picker(select) { background: #26282d; color: var(--text); border: 1px solid #ffffff14; border-radius: 14px; padding: 6px;
+    margin-top: 6px; max-height: min(70vh, 640px); box-shadow: 0 16px 40px #00000080; }
+  #device optgroup { font: 600 11px/1 -apple-system, system-ui, sans-serif; color: var(--dim); text-transform: uppercase; letter-spacing: .04em; padding: 8px 6px 4px; }
+  #device option { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; font: 500 13px/1.25 -apple-system, system-ui, sans-serif;
+    color: var(--text); text-transform: none; letter-spacing: 0; cursor: pointer; }
+  #device option:hover, #device option:focus-visible { background: #ffffff10; outline: none; }
+  #device option:checked { background: #e07a5f22; }
+  #device option::checkmark { order: 9; color: var(--accent); }
+  #device img { width: 34px; height: 34px; object-fit: contain; flex: none; }
+  #device .o-text { display: grid; gap: 1px; flex: 1; min-width: 0; }
+  #device .o-meta { font-size: 11px; font-weight: 400; color: var(--dim); }
+  #device .o-meta.get { color: #6cb6ff; }
+  #device .o-meta.upd { color: #f0b54a; }
+  #device selectedcontent { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  #device selectedcontent img { width: 28px; height: 28px; }
+  #dl { width: 0; min-width: 100%; font-size: 12px; color: var(--dim); display: grid; gap: 4px; }
+  #dl[hidden] { display: none; }
+  #dlBar { height: 4px; border-radius: 2px; background: #ffffff14; overflow: hidden; }
+  #dlFill { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  #screen { width: 480px; max-width: 100%; aspect-ratio: 1; flex: none; background: #000; border-radius: 12px; overflow: hidden; }
+  /* qemu sends an empty cursor, so noVNC hides the pointer; force a fingertip one. */
+  #screen canvas { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28'%3E%3Ccircle cx='14' cy='14' r='11' fill='white' fill-opacity='0.35' stroke='white' stroke-opacity='0.9' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='1.5' fill='white'/%3E%3C/svg%3E") 14 14, default !important; }
+  #mem { font-size: 12px; color: var(--dim); display: grid; gap: 4px; }
+  #mem[hidden] { display: none; }
+  #memHead { display: flex; justify-content: space-between; }
+  #memHead b { color: var(--text); font-weight: 600; }
+  #memBar { height: 6px; background: #ffffff12; border-radius: 3px; overflow: hidden; }
+  #memFill { height: 100%; width: 0; background: linear-gradient(90deg, #4fd1c5, #f0b54a 70%, #ff6b6b); background-size: 300px 100%; transition: width .3s; }
+  #memSpark { width: 100%; height: 28px; display: block; }
+  #status { color: var(--dim); font-size: 12px; }
+  #phone { flex: none; width: 422px; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; border-right: 1px solid #000; }
+  #phone[hidden] { display: none; }
+  #phoneHead { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+  #phoneHead .btn.icon { padding: 5px 9px; }
+  #phoneOpen[hidden] { display: none; }
+  .i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  /* The watch screen alone sets the column width; these fill it without widening it. */
+  #actions, #controls, #phoneCtl, #mem { width: 0; min-width: 100%; box-sizing: border-box; }
+  #actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px; border: 1px solid #ffffff14;
+    background: linear-gradient(180deg, #ffffff10, #ffffff06); color: var(--text); font: 500 13px/1 -apple-system, system-ui, sans-serif;
+    box-shadow: 0 1px 0 #ffffff0d inset, 0 2px 8px #0000004d; transition: transform .12s, background .12s, border-color .12s; }
+  .btn:hover { background: linear-gradient(180deg, #ffffff1c, #ffffff0a); border-color: #ffffff26; transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: .5; cursor: progress; }
+  .btn .i { color: var(--accent); }
+  .btn.on { border-color: var(--accent); background: #e07a5f22; }
+  #screen { transition: border-radius .2s; }
+  #controls { background: #26282d; border: 1px solid #ffffff0d; border-radius: 14px; padding: 4px 12px; box-shadow: 0 8px 24px #00000040; }
+  #controls summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer; color: var(--text); font-weight: 600; user-select: none; }
+  #controls summary::-webkit-details-marker { display: none; }
+  #controls summary span { flex: 1; }
+  #controls summary .i:last-child { color: var(--dim); transition: transform .2s; }
+  #controls[open] summary .i:last-child { transform: rotate(180deg); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .tile { grid-template-columns: minmax(0, 1fr); min-width: 0; background: #1d1f23; border: 1px solid #ffffff0a; border-radius: 12px; padding: 10px; display: grid; gap: 10px; }
+  .t-head { display: flex; align-items: center; gap: 7px; color: var(--dim); font-size: 12px; }
+  .t-head .i { color: var(--c); }
+  .t-head span { flex: 1; }
+  .t-head output { color: var(--text); font: 600 15px/1 -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+  .t-head output::after { content: ' ' attr(data-unit); color: var(--dim); font-size: 11px; font-weight: 400; }
+  .slider { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 3px; margin: 4px 0;
+    background: linear-gradient(90deg, var(--c) var(--p, 50%), #ffffff14 var(--p, 50%)); outline: none; }
+  .slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 30%, transparent), 0 2px 6px #00000080; cursor: grab; }
+  .slider::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 30%, transparent); }
+  .stepper { display: flex; align-items: center; background: #ffffff08; border-radius: 9px; overflow: hidden; }
+  .stepper button { width: 32px; height: 30px; border: 0; border-radius: 0; background: transparent; color: var(--c); font-size: 18px; padding: 0; }
+  .stepper button:hover { background: #ffffff10; }
+  .stepper input { flex: 1; min-width: 0; text-align: center; background: transparent; border: 0; color: var(--text); font: 600 16px/1 -apple-system, system-ui, sans-serif; font-variant-numeric: tabular-nums; -moz-appearance: textfield; outline: none; }
+  .stepper input::-webkit-inner-spin-button, .stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .switches { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .switch { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px 6px 8px; border-radius: 999px; background: #1d1f23; border: 1px solid #ffffff0a; color: var(--dim); cursor: pointer; font-size: 12px; user-select: none; transition: color .15s, border-color .15s, background .15s; }
+  .switch input { display: none; }
+  .switch .knob { width: 26px; height: 16px; border-radius: 8px; background: #ffffff1a; position: relative; transition: background .15s; }
+  .switch .knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #9ca0a8; transition: transform .15s, background .15s; }
+  .switch:has(input:checked) { color: var(--text); border-color: color-mix(in srgb, var(--c) 40%, transparent); background: color-mix(in srgb, var(--c) 10%, #1d1f23); }
+  .switch:has(input:checked) .knob { background: var(--c); }
+  .switch:has(input:checked) .knob::after { transform: translateX(10px); background: #fff; }
+  .switch:has(input:checked) .i { color: var(--c); }
+  .btn.icon .i { margin: 0; }
+  .card { background: #26282d; border: 1px solid #ffffff0d; border-radius: 14px; padding: 4px 12px; box-shadow: 0 8px 24px #00000040; }
+  .card > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 8px 0; cursor: pointer; color: var(--text); font-weight: 600; user-select: none; }
+  .card > summary::-webkit-details-marker { display: none; }
+  .card > summary span { flex: 1; }
+  .card > summary .i:last-child { color: var(--dim); transition: transform .2s; }
+  .card[open] > summary .i:last-child { transform: rotate(180deg); }
+  #phoneCtl[open] { padding-bottom: 12px; }
+  #chaosBadge { color: #f0b54a; font-weight: 500; font-size: 11px; }
+  .chaos-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .chaos-label { display: flex; align-items: center; gap: 7px; margin: 12px 0 6px; font-size: 12px; color: var(--dim); }
+  .hint, small.dim { color: var(--dim); font-weight: 400; font-size: 11px; }
+  .hint { margin: 6px 2px; }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+  .btn.small.on { border-color: #ff6b6b; background: #ff6b6b22; }
+  .seg { display: flex; flex-wrap: wrap; gap: 4px; }
+  .seg button { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid #ffffff0d; background: #ffffff08; color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .seg button:hover { color: var(--text); background: #ffffff10; }
+  .seg button.on { color: #111; background: var(--c); border-color: transparent; font-weight: 600; }
+  .row .note { color: #f0b54a; font-size: 11px; flex: none; }
+  .picker { display: flex; align-items: center; gap: 8px; margin: 8px 0 10px; padding: 0 10px; border-radius: 10px; background: #1d1f23; border: 1px solid #ffffff0a; color: var(--dim); }
+  .picker .i:first-child { color: #38bdf8; }
+  .picker select { flex: 1; -webkit-appearance: none; appearance: none; background: transparent; border: 0; color: var(--text); font-size: 16px; padding: 8px 0; outline: none; cursor: pointer; }
+  .picker select option { background: #26282d; }
+  #settings { width: 100%; max-width: 390px; height: min(760px, calc(100vh - 70px)); border: 0; border-radius: 24px; background: #fff; }
+  #side { display: none; }
+  #right { flex: 1 0 420px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #bar { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 8px; background: var(--panel); }
+  #tabs { display: flex; gap: 2px; }
+  .tab { white-space: nowrap; border-radius: 4px; border-color: transparent; color: var(--dim); }
+  .tab.on { color: var(--text); border-color: var(--accent); }
+  .tab b { font-weight: normal; color: var(--dim); margin-left: 4px; font-size: 11px; }
+  .tab b.err { color: #ff6b6b; }
+  #levels { display: flex; gap: 2px; }
+  .chip { font-size: 11px; padding: 3px 7px; opacity: .35; }
+  .chip.on { opacity: 1; }
+  .chip[data-lv="E"] { color: #ff6b6b; } .chip[data-lv="W"] { color: #f0b54a; } .chip[data-lv="I"] { color: #6cb6ff; }
+  .chip[data-lv="L"] { color: var(--text); } .chip[data-lv="D"] { color: #9a8cff; }
+  #sys.on { border-color: #888; color: var(--text); }
+  #sys { color: var(--dim); }
+  .autoclear { display: inline-flex; align-items: center; gap: 5px; color: var(--dim); font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; }
+  .autoclear input { accent-color: var(--accent); margin: 0; }
+  .autoclear:has(input:checked) { color: var(--text); }
+  #filter { flex: 1; min-width: 80px; background: var(--bg); color: var(--text); border: 1px solid #444; border-radius: 4px; padding: 4px 8px; font-size: 16px; }
+  button { background: var(--bg); color: var(--text); border: 1px solid #444; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+  #log { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 6px 0; font: 12px/1.5 ui-monospace, Menlo, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 0 10px; padding: 1px 10px; align-items: baseline; }
+  .row > .time { flex: none; width: 92px; }
+  .row > .lvl { flex: none; width: 64px; }
+  .row > .tag { flex: none; }
+  .row > .msg { flex: 1 1 260px; }
+  .row > .count, .row > .size { flex: none; }
+  .row:hover { background: #ffffff08; }
+  .time { color: #5f636b; }
+  .lvl { font-size: 11px; white-space: nowrap; }
+  .tag { color: var(--dim); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  .msg { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+  .msg.expandable { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg.expandable:hover { text-decoration: underline dotted #666; }
+  .msg.expandable.open { white-space: pre-wrap; background: #ffffff0a; border-radius: 4px; padding: 4px 6px; }
+  .msg.dim, .size { color: #5f636b; }
+  .count { background: #3a3d44; color: #cfd2d8; border-radius: 9px; padding: 0 7px; font-size: 11px; }
+  .lv-E { background: #ff6b6b14; } .lv-E .lvl, .lv-E .msg { color: #ff8585; }
+  .lv-W .lvl, .lv-W .msg { color: #f0c46a; }
+  .lv-I .lvl { color: #6cb6ff; }
+  .lv-L .lvl { color: #8fd18f; }
+  .lv-D .lvl, .lv-D .msg { color: #9a8cff; }
+  .sys { opacity: .5; }
+  .sys .tag { color: #6b6f77; }
+  .wire.to-watch .lvl, .wire.to-watch .tag { color: #4fd1c5; }
+  .wire.from-watch .lvl, .wire.from-watch .tag { color: #f687b3; }
+  .wire .msg { color: #d8dbe0; }
+  .stack { flex: 0 0 100%; margin-left: 176px; color: #d98a8a; padding-left: 12px; border-left: 2px solid #ff6b6b55; white-space: pre-wrap; }
+  .sep { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 11px; padding: 8px 10px; }
+  .sep::before, .sep::after { content: ''; flex: 1; border-top: 1px solid #e07a5f55; }
+  /* Phone-sized windows: one section per screen, swipe between them. */
+  @media (max-width: 760px) {
+    #left, #phone, #right { width: 100vw; flex: none; }
+    #screen { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div id="left">
+  <div class="device-pick"><select id="device" aria-label="Simulated watch"></select></div>
+  <div id="dl" hidden><div id="dlText"></div><div id="dlBar"><div id="dlFill"></div></div></div>
+  <div id="screen"></div>
+  <div id="status">connecting…</div>
+  <div id="actions">
+    <button class="btn" id="shot" title="Save a PNG of the watch screen"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>Screenshot</button>
+    <button class="btn" id="offscreen" title="Show what the app draws outside the display (firmware dims it)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="5"/></svg>Off-screen</button>
+    <button class="btn" id="rest" title="Rest screen (screen off)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>Rest</button>
+    <button class="btn" id="phoneOpen" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>Settings</button>
+  </div>
+  <details id="controls">
+    <summary><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span>Controls</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+    <div class="tiles">
+      <div class="tile" style="--c:#ff6b81"><div class="t-head"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg><span>Heart rate</span><output data-unit="bpm"></output></div><input class="slider" type="range" min="20" max="220" data-key="vcfg_heartrate"></div>
+      <div class="tile" style="--c:#4ade80"><div class="t-head"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="16" height="10" x="2" y="7" rx="2"/><path d="M22 11v2"/></svg><span>Battery</span><output data-unit="%"></output></div><input class="slider" type="range" min="0" max="100" data-key="vcfg_battery"></div>
+      <div class="tile" style="--c:#fb923c"><div class="t-head"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><span>Calories</span></div><div class="stepper"><button data-step="-50">−</button><input type="number" min="0" data-key="vcfg_calorie"><button data-step="50">+</button></div></div>
+      <div class="tile" style="--c:#60a5fa"><div class="t-head"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/></svg><span>Steps</span></div><div class="stepper"><button data-step="-500">−</button><input type="number" min="0" data-key="vcfg_walkstep"><button data-step="500">+</button></div></div>
+    </div>
+    <div class="switches">
+      <label class="switch" style="--c:#facc15"><input type="checkbox" data-key="vcfg_charge"><span class="knob"></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>Charging</label>
+      <label class="switch" style="--c:#a78bfa"><input type="checkbox" data-key="vcfg_lock"><span class="knob"></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Locked</label>
+      <label class="switch" style="--c:#2dd4bf"><input type="checkbox" data-key="vcfg_timeformat"><span class="knob"></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>24-hour</label>
+    </div>
+    <label class="picker"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><select data-key="vcfg_language"></select><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></label>
+  </details>
+  <details id="phoneCtl" class="card">
+    <summary><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg><span>Phone</span><small id="chaosBadge"></small><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+    <div class="chaos-row"><label class="switch" style="--c:#60a5fa"><input type="checkbox" id="linkOn" checked><span class="knob"></span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>BLE link</label>
+      <button class="btn small" id="sideKill"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><path d="M8 20v2h8v-2M12.5 17l-.5-1-.5 1h1zM16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/></svg><span>Kill side service</span></button></div>
+    <div class="hint" id="sideHint">Like the Zepp app's 10-minute idle kill: the watch's next message gets Close, its re-shake respawns the service.</div>
+    <div class="chaos-label"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Network <small class="dim">side service fetch</small></div>
+    <div class="seg" id="netMode" style="--c:#fbbf24"><button data-v="online">Online</button><button data-v="slow">Slow +2s</button><button data-v="failing">HTTP 500</button><button data-v="offline">Offline</button></div>
+    <div class="chaos-label"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>BLE latency <small class="dim">each watch ↔ phone frame</small></div>
+    <div class="seg" id="latency" style="--c:#a78bfa"><button data-v="0">None</button><button data-v="200">200 ms</button><button data-v="1000">1 s</button><button data-v="3000">3 s</button></div>
+  </details>
+  <div id="mem" hidden title="JS heap of the running app (firmware malloc_size). The bar fills toward the next GC threshold.">
+    <div id="memHead"><span>🧠 JS heap <b id="memNow"></b></span><span id="memMeta"></span></div>
+    <div id="memBar"><div id="memFill"></div></div>
+    <svg id="memSpark" viewBox="0 0 240 28" preserveAspectRatio="none"><polyline id="memLine" fill="none" stroke="#4fd1c5" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+</div>
+<div id="phone" hidden>
+  <div id="phoneHead"><span id="phoneTitle">Settings</span><span><button class="btn icon" id="phoneReload" title="Reload settings">↻</button> <button class="btn icon" id="phoneClose" title="Close settings">✕</button></span></div>
+  <iframe id="settings" title="App settings"></iframe>
+</div>
+<iframe id="side" title="Side service"></iframe>
+<div id="right">
+  <div id="bar">
+    <div id="tabs">
+      <button class="tab on" data-src="watch">Watch<b></b></button>
+      <button class="tab" data-src="side">App-side<b></b></button>
+      <button class="tab" data-src="settings">Settings<b></b></button>
+    </div>
+    <div id="levels">
+      <button class="chip on" data-lv="E" title="Errors">✖</button>
+      <button class="chip on" data-lv="W" title="Warnings">▲</button>
+      <button class="chip on" data-lv="I" title="Info">ℹ</button>
+      <button class="chip on" data-lv="L" title="Log">●</button>
+      <button class="chip on" data-lv="D" title="Debug">◦</button>
+    </div>
+    <button id="sys" title="Show system lines (firmware, framework)">⚙ system</button>
+    <input id="filter" placeholder="Filter">
+    <label class="autoclear" title="Clear all three logs whenever an app is installed"><input type="checkbox" id="autoClear">Auto-clear</label>
+    <button id="clear">Clear</button>
+  </div>
+  <div id="log"></div>
+</div>
+<script type="module">
+import RFB from '/novnc/core/rfb.js'
+import { parse, render, Log, Insights, mb } from '/logs.js'
+
+const $ = id => document.getElementById(id)
+const st = await (await fetch('/api/state')).json()
+// ---- device picker: downloaded firmware first, then the rest of Zepp's catalog ----
+// Display shape: round watches have equal sides; square-screen ones have corners at 21.8%
+// of the width (measured from Zepp's own screenshot masks: 85 px on a 390 px screen).
+let showOffscreen = false
+try { showOffscreen = localStorage.getItem('simweb.offscreen') === '1' } catch {}
+function shapeScreen () {
+  const [w, h] = (device.ratio || '1*1').split(/[*x]/).map(Number)
+  $('screen').style.borderRadius = showOffscreen ? '12px' : w === h ? '50%' : `21.8% / ${(21.8 * w) / h}%`
+  $('offscreen').classList.toggle('on', showOffscreen)
+}
+$('offscreen').onclick = () => {
+  showOffscreen = !showOffscreen
+  try { localStorage.setItem('simweb.offscreen', showOffscreen ? '1' : '0') } catch {}
+  shapeScreen()
+}
+function sizeScreen (device) {
+  shapeScreen()
+  if (!device.ratio) return
+  const [w, h] = device.ratio.split(/[*x]/).map(Number)
+  // Native size when it fits; otherwise shrink to the window height (minus the gauge).
+  $('screen').style.width = `min(${w}px, calc((100vh - 190px) * ${w / h}))`
+  $('screen').style.aspectRatio = `${w} / ${h}`
+}
+// Catalog versions come as "1.1.0" or "v1.0.1"; compare the numbers.
+const ver = code => (String(code || '').match(/\d+/g) || []).map(Number)
+const vtext = code => 'v' + ver(code).join('.')
+function deviceOption (d) {
+  const o = document.createElement('option')
+  o.value = d.id
+  if (d.image) {
+    const img = document.createElement('img')
+    img.src = d.image
+    img.alt = ''
+    img.loading = 'lazy'
+    o.append(img)
+  }
+  const text = document.createElement('span')
+  text.className = 'o-text'
+  const name = document.createElement('span')
+  name.textContent = d.name
+  const meta = document.createElement('span')
+  meta.className = 'o-meta' + (d.downloaded ? (d.updateTo ? ' upd' : '') : d.updateFrom ? ' upd' : ' get')
+  const status = d.downloaded
+    ? (d.updateTo ? `on this computer · ${vtext(d.updateTo)} available` : 'on this computer')
+    : d.updateFrom ? `↑ update from ${vtext(d.updateFrom)} · ${Math.round((d.size || 0) / 1048576)} MB` : `↓ ${Math.round((d.size || 0) / 1048576)} MB`
+  meta.textContent = [d.ratio && d.ratio.replace(/[*x]/, '×'), status].filter(Boolean).join(' · ')
+  text.append(name, meta)
+  o.append(text)
+  return o
+}
+function fillDevices (devices, current) {
+  const sel = $('device')
+  sel.textContent = ''
+  // The closed select shows a copy of the chosen option (image + text) via <selectedcontent>.
+  const btn = document.createElement('button')
+  btn.append(document.createElement('selectedcontent'))
+  sel.append(btn)
+  const byName = (a, b) => a.name.localeCompare(b.name)
+  // Downloads: only each model's newest release.
+  for (const d of devices) { delete d.updateFrom; delete d.updateTo }
+  const newer = (a, b) => {
+    const [x, y] = [ver(a.code), ver(b.code)]
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0)
+    return false
+  }
+  const latest = {}
+  for (const d of devices) if (d.model && (!latest[d.model] || newer(d, latest[d.model]))) latest[d.model] = d
+  // Zepp lists some watches under several model entries, so match releases by name without
+  // the version. A newer release of a watch already on disk is an update, not a new download.
+  const base = d => d.name.replace(/\s+v?[\d.]+$/, '')
+  const newest = {}
+  for (const d of devices.filter(x => x.downloaded)) if (!newest[base(d)] || newer(d, newest[base(d)])) newest[base(d)] = d
+  const candidates = Object.values(latest).filter(d => !d.downloaded)
+  const updates = candidates.filter(d => newest[base(d)] && newer(d, newest[base(d)]))
+  for (const d of updates) { d.updateFrom = newest[base(d)].code; newest[base(d)].updateTo = d.code }
+  const groups = [
+    ['Updates available', updates.sort(byName)],
+    ['On this computer', devices.filter(d => d.downloaded).sort(byName)],
+    ['Download from Zepp', candidates.filter(d => !newest[base(d)]).sort(byName)],
+  ]
+  for (const [label, list] of groups) {
+    if (!list.length) continue
+    const g = document.createElement('optgroup')
+    g.label = label
+    for (const d of list) g.append(deviceOption(d))
+    sel.append(g)
+  }
+  sel.value = current.id
+}
+let devices = st.devices
+let device = st.device
+fillDevices(devices, device)
+sizeScreen(device)
+$('device').onchange = () => {
+  const next = devices.find(d => d.id === $('device').value)
+  if (!next || next.id === device.id) return
+  if (!next.downloaded && !confirm(`Download ${next.name} (${Math.round((next.size || 0) / 1048576)} MB) from Zepp?`)) { $('device').value = device.id; return }
+  $('device').disabled = true
+  fetch('/api/device', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: next.id }) })
+}
+function onDeviceEvent (ev) {
+  if (ev.type === 'device') {
+    device = ev.device
+    const known = devices.find(d => d.id === device.id)
+    if (known) known.downloaded = true
+    fillDevices(devices, device)
+    sizeScreen(device)
+    $('device').disabled = false
+    $('dl').hidden = true
+  } else if (ev.type === 'download') {
+    if (ev.error) { $('dl').hidden = true; $('device').disabled = false; $('device').value = device.id; alert('Device switch failed: ' + ev.error); return }
+    $('dl').hidden = !!ev.done
+    const pct = ev.total ? Math.round((ev.received / ev.total) * 100) : 0
+    const name = (devices.find(d => d.id === ev.id) || {}).name || 'firmware'
+    $('dlText').textContent = `Downloading ${name} · ${pct}% (${Math.round(ev.received / 1048576)}/${Math.round(ev.total / 1048576)} MB)`
+    $('dlFill').style.width = pct + '%'
+  }
+}
+
+const wsUrl = p => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + p
+
+// Screen. qemu's VNC server only exists once the guest display is up, so retry.
+function connectScreen () {
+  const rfb = new RFB($('screen'), wsUrl('/vnc'))
+  rfb.scaleViewport = true
+  rfb.addEventListener('connect', () => { $('status').textContent = 'running' })
+  rfb.addEventListener('disconnect', () => {
+    $('status').textContent = 'waiting for simulator…'
+    setTimeout(connectScreen, 1000)
+  })
+}
+connectScreen()
+
+// Phone side: Zepp's side-service (hidden) and app-settings pages, reloaded per install.
+// Each install bumps app.rev; a tab that missed the event (reconnect, old copy) catches up
+// by comparing revs on reconnect and on focus.
+let appRev = null
+async function syncApp () {
+  const { app } = await (await fetch('/api/state')).json()
+  if ((app && app.rev) !== appRev) loadApp(app)
+}
+window.addEventListener('focus', () => syncApp().catch(() => {}))
+// Settings pane: ✕ closes it (remembered across reloads), "📱 Open settings" brings it back
+// freshly loaded, as reopening the settings app on the phone would.
+let currentApp = null
+let settingsClosed = false
+try { settingsClosed = localStorage.getItem('simweb.settingsClosed') === '1' } catch {}
+function showSettings () {
+  const has = !!(currentApp && currentApp.settings)
+  $('phone').hidden = !has || settingsClosed
+  $('phoneOpen').hidden = !has || !settingsClosed
+  if (has && !settingsClosed) {
+    $('phoneTitle').textContent = (currentApp.name || 'App') + ' settings'
+    $('settings').src = '/settings.html?appId=' + currentApp.appId + '&t=' + Date.now()
+  } else $('settings').src = 'about:blank'
+}
+function setSettingsClosed (closed) {
+  settingsClosed = closed
+  try { localStorage.setItem('simweb.settingsClosed', closed ? '1' : '0') } catch {}
+  showSettings()
+}
+$('phoneClose').onclick = () => setSettingsClosed(true)
+$('phoneOpen').onclick = () => setSettingsClosed(false)
+$('phoneReload').onclick = () => showSettings()
+function loadApp (app) {
+  appRev = app && app.rev
+  currentApp = app
+  $('side').src = app && app.side ? '/side.html?t=' + Date.now() : 'about:blank'
+  showSettings()
+}
+loadApp(st.app)
+function connectEvents () {
+  const events = new WebSocket(wsUrl('/events'))
+  events.onopen = () => syncApp().catch(() => {})
+  events.onmessage = e => {
+    const ev = JSON.parse(e.data)
+    if (ev.type === 'app') loadApp(ev.app)
+    else if (ev.type === 'device' || ev.type === 'download') onDeviceEvent(ev)
+    else if (ev.type === 'side') onSideEvent(ev.cmd)
+    else if (ev.type === 'openSettings') {
+      if (ev.auth) window.open(ev.auth, '_blank')
+      else if (ev.url) { settingsClosed = false; $('phone').hidden = false; $('phoneOpen').hidden = true; $('settings').src = ev.url }
+    }
+  }
+  events.onclose = () => setTimeout(connectEvents, 1000)
+}
+connectEvents()
+
+// ---- watch controls: each change re-sends the firmware's whole Config table ----
+const LANGUAGES = ['Chinese (Simplified)', 'Chinese (Traditional)', 'English', 'Spanish', 'Russian', 'Korean', 'French', 'German',
+  'Indonesian', 'Polish', 'Italian', 'Japanese', 'Thai', 'Arabic', 'Vietnamese', 'Portuguese', 'Dutch', 'Turkish', 'Ukrainian',
+  'Hebrew', 'Portuguese (Brazil)', 'Romanian', 'Czech', 'Greek', 'Serbian (Latin)', 'Catalan', 'Finnish', 'Norwegian', 'Danish',
+  'Swedish', 'Hungarian', 'Malay', 'Slovak', 'Hindi']
+const langSelect = document.querySelector('select[data-key=vcfg_language]')
+LANGUAGES.forEach((name, i) => langSelect.append(new Option(name, String(i))))
+try { $('controls').open = localStorage.getItem('simweb.controls') === '1' } catch {}
+$('controls').addEventListener('toggle', () => { try { localStorage.setItem('simweb.controls', $('controls').open ? '1' : '0') } catch {} })
+
+const isTrue = v => v === true || v === 'true'
+async function loadControls () {
+  const cfg = await (await fetch('/api/config')).json()
+  for (const input of document.querySelectorAll('#controls [data-key]')) {
+    const v = cfg[input.dataset.key]
+    if (v === undefined) continue
+    if (input.type === 'checkbox') input.checked = isTrue(v)
+    else input.value = v
+    paint(input)
+  }
+}
+// Slider fill (--p) and the tile's readout.
+function paint (input) {
+  if (input.type === 'range') input.style.setProperty('--p', ((input.value - input.min) / (input.max - input.min)) * 100 + '%')
+  const out = input.closest('.tile')?.querySelector('output')
+  if (out) out.textContent = input.value
+}
+for (const btn of document.querySelectorAll('.stepper button')) {
+  btn.onclick = () => {
+    const input = btn.parentNode.querySelector('input')
+    input.value = Math.max(input.min === '' ? -Infinity : +input.min, (+input.value || 0) + +btn.dataset.step)
+    input.dispatchEvent(new Event('input'))
+    input.dispatchEvent(new Event('change'))
+  }
+}
+loadControls().catch(() => {})
+function setConfig (key, value) {
+  fetch('/api/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ [key]: value }) })
+}
+for (const input of document.querySelectorAll('#controls [data-key]')) {
+  input.addEventListener('input', () => paint(input))
+  // Sliders send on release, not on every step.
+  input.addEventListener('change', () => setConfig(input.dataset.key, input.type === 'checkbox' ? input.checked : String(input.value)))
+}
+$('rest').onclick = () => fetch('/api/rest', { method: 'POST' })
+// Screenshot = Zepp store asset: 360×360 RGBA, display shape clipped with transparent
+// outside, scaled to the full height and centred (390×450 → 312×360 at x=24). Round
+// watches are a circle; square-screen ones keep rounded corners at 21.8% of the width
+// (68 px @312, from Zepp's masks). Canvas composites premultiplied, so the firmware's grey
+// off-screen pixels can't fringe the edge. Shift+click saves the raw framebuffer instead.
+const shotCount = { round: 0, square: 0 }
+async function storePng (raw) {
+  const bmp = await createImageBitmap(raw)
+  const round = bmp.width === bmp.height
+  const dh = 360
+  const dw = Math.round((bmp.width * dh) / bmp.height)
+  const dx = Math.round((360 - dw) / 2)
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = 360
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingQuality = 'high'
+  ctx.beginPath()
+  // Half a pixel inside the rim: the firmware dims everything outside the display, and at
+  // the full radius resampling blends that grey into the edge.
+  if (round) ctx.arc(180, 180, 179.5, 0, Math.PI * 2)
+  else ctx.roundRect(dx, 0, dw, dh, dw * 0.218)
+  ctx.clip()
+  ctx.drawImage(bmp, dx, 0, dw, dh)
+  return { blob: await new Promise(resolve => canvas.toBlob(resolve, 'image/png')), shape: round ? 'round' : 'square' }
+}
+const slug = text => String(text || 'watch').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+function saveBlob (blob, name) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000)
+}
+$('shot').title = 'Save a Zepp store screenshot (360×360, transparent outside the screen). Shift+click: raw framebuffer'
+$('shot').onclick = async e => {
+  $('shot').disabled = true
+  try {
+    const res = await fetch('/api/screenshot')
+    if (!res.ok) throw new Error(await res.text())
+    const raw = await res.blob()
+    const app = slug(currentApp && currentApp.name)
+    if (e.shiftKey) {
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+      saveBlob(raw, `${app}-${slug(device.name)}-${stamp}-raw.png`)
+    } else {
+      const { blob, shape } = await storePng(raw)
+      saveBlob(blob, `${shape}-${++shotCount[shape]}-${app}.png`)
+    }
+  } catch (err) {
+    alert('Screenshot failed: ' + err.message)
+  } finally {
+    $('shot').disabled = false
+  }
+}
+
+// ---- phone faults: BLE link, side service kill/respawn, network, latency ----
+let chaos = { link: true, network: 'online', latency: 0, sideKilled: false }
+function drawChaos () {
+  $('linkOn').checked = chaos.link
+  for (const b of document.querySelectorAll('#netMode button')) b.classList.toggle('on', b.dataset.v === chaos.network)
+  for (const b of document.querySelectorAll('#latency button')) b.classList.toggle('on', +b.dataset.v === chaos.latency)
+  $('sideKill').classList.toggle('on', chaos.sideKilled)
+  $('sideKill').querySelector('span').textContent = chaos.sideKilled ? 'Start side service' : 'Kill side service'
+  $('sideHint').textContent = chaos.sideKilled
+    ? 'Dead. The watch\'s next message gets Close; its re-shake respawns the service (or press Start).'
+    : 'Like the Zepp app\'s 10-minute idle kill: the watch\'s next message gets Close, its re-shake respawns the service.'
+  const faults = [!chaos.link && 'link down', chaos.sideKilled && 'side killed', chaos.network !== 'online' && chaos.network, chaos.latency && `+${chaos.latency} ms`].filter(Boolean)
+  $('chaosBadge').textContent = faults.join(' · ')
+}
+async function setChaos (patch) {
+  chaos = await (await fetch('/api/chaos', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) })).json()
+  drawChaos()
+}
+fetch('/api/chaos').then(r => r.json()).then(c => { chaos = c; drawChaos() }).catch(() => {})
+$('linkOn').onchange = () => setChaos({ link: $('linkOn').checked })
+$('sideKill').onclick = () => setChaos({ side: chaos.sideKilled ? 'start' : 'kill' })
+for (const b of document.querySelectorAll('#netMode button')) b.onclick = () => setChaos({ network: b.dataset.v })
+for (const b of document.querySelectorAll('#latency button')) b.onclick = () => setChaos({ latency: +b.dataset.v })
+try { $('phoneCtl').open = localStorage.getItem('simweb.phoneCtl') === '1' } catch {}
+$('phoneCtl').addEventListener('toggle', () => { try { localStorage.setItem('simweb.phoneCtl', $('phoneCtl').open ? '1' : '0') } catch {} })
+function onSideEvent (cmd) {
+  chaos.sideKilled = cmd === 'kill'
+  drawChaos()
+  if (cmd === 'kill') $('side').src = 'about:blank'
+  else if (currentApp && currentApp.side) $('side').src = '/side.html?t=' + Date.now()
+}
+
+// Three logs. Filter, level chips and ⚙ system act on the visible one; hidden tabs count
+// unread lines (red when an error arrived).
+const pane = $('log')
+const logs = { watch: new Log(), side: new Log(), settings: new Log() }
+const unread = { watch: 0, side: 0, settings: 0 }
+const unreadErr = { watch: false, side: false, settings: false }
+const levels = new Set(['E', 'W', 'I', 'L', 'D'])
+const nodes = new WeakMap()
+let active = 'watch'
+let filter = ''
+let showSys = false
+
+function visible (row) {
+  if (row.type !== 'sep') {
+    if (row.sys && !showSys) return false
+    if (row.type === 'line' && !levels.has(row.level)) return false
+  }
+  if (filter) {
+    const hay = row.type === 'msg' ? row.msg.kind + ' ' + (row.msg.body || '') : (row.tag || '') + ' ' + row.text
+    if (!hay.toLowerCase().includes(filter)) return false
+  }
+  return true
+}
+
+// Follow the tail only while the user sits at the bottom. Decided by the user's own
+// scrolling, not re-measured per line, so a burst of output can't unstick or restick it.
+let follow = true
+pane.addEventListener('scroll', () => {
+  follow = pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 24
+})
+function show (row) {
+  const node = render(row)
+  nodes.set(row, node)
+  pane.appendChild(node)
+  if (pane.childNodes.length > 3000) {
+    const h = pane.firstChild.offsetHeight
+    pane.firstChild.remove()
+    if (!follow) pane.scrollTop -= h
+  }
+}
+function redraw () {
+  pane.textContent = ''
+  for (const row of logs[active].rows) if (visible(row)) show(row)
+  follow = true
+  pane.scrollTop = pane.scrollHeight
+}
+function badge (src) {
+  const b = document.querySelector(`.tab[data-src="${src}"] b`)
+  b.textContent = unread[src] || ''
+  b.className = unreadErr[src] ? 'err' : ''
+}
+
+function ingest (src, row) {
+  const { row: r, merged } = logs[src].add(row)
+  if (src !== active) {
+    if (!merged && visible(r)) { unread[src]++; if (r.level === 'E' && r.type === 'line') unreadErr[src] = true; badge(src) }
+    return
+  }
+  if (!visible(r)) return
+  const old = merged && nodes.get(r)
+  if (old && old.parentNode === pane) {
+    const node = render(r)
+    nodes.set(r, node)
+    old.replaceWith(node)
+  } else show(r)
+  if (follow) pane.scrollTop = pane.scrollHeight
+}
+
+// Heap gauge under the watch, fed by every watch line whichever tab is open.
+let insights = new Insights()
+function drawMem () {
+  const i = insights
+  if (!i.heap) { $('mem').hidden = true; return }
+  $('mem').hidden = false
+  $('memNow').textContent = mb(i.heap)
+  $('memMeta').textContent = (i.threshold ? 'next GC ' + mb(i.threshold) + ' · ' : '') + 'peak ' + mb(i.peak)
+  const max = i.threshold > i.heap ? i.threshold : i.peak * 1.25
+  $('memFill').style.width = Math.min(100, (i.heap / max) * 100) + '%'
+  const h = i.history
+  const lo = Math.min(...h) * 0.98
+  const hi = Math.max(...h, lo + 1)
+  $('memLine').setAttribute('points', h.map((v, k) => `${(k / Math.max(1, h.length - 1)) * 240},${26 - ((v - lo) / (hi - lo)) * 24}`).join(' '))
+}
+
+let autoClear = false
+try { autoClear = localStorage.getItem('simweb.autoClear') === '1' } catch {}
+function connectLog () {
+  const ws = new WebSocket(wsUrl('/serial'))
+  ws.onmessage = e => {
+    const entry = JSON.parse(e.data)
+    const row = parse(entry)
+    if (!row) return
+    // Auto-clear: each install starts all three logs fresh (also applies to the replayed
+    // history, so a reload shows only the latest install).
+    if (autoClear && row.type === 'sep' && /^installed /.test(row.text)) {
+      for (const src in logs) { logs[src] = new Log(); unread[src] = 0; unreadErr[src] = false; badge(src) }
+      redraw()
+    }
+    const extra = insights.feed(row)
+    if (entry.src === 'all') for (const src in logs) ingest(src, { ...row, src })
+    else ingest(entry.src, row)
+    for (const r of extra) ingest('watch', r)
+    if (entry.src === 'watch') drawMem()
+  }
+  // The helper replays its history on connect, so start clean on reconnect.
+  ws.onopen = () => { for (const src in logs) logs[src] = new Log(); insights = new Insights(); redraw(); drawMem() }
+  ws.onclose = () => setTimeout(connectLog, 1000)
+}
+connectLog()
+
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.onclick = () => {
+    active = tab.dataset.src
+    unread[active] = 0
+    unreadErr[active] = false
+    badge(active)
+    for (const t of document.querySelectorAll('.tab')) t.classList.toggle('on', t === tab)
+    redraw()
+  }
+}
+for (const chip of document.querySelectorAll('.chip')) {
+  chip.onclick = () => {
+    const lv = chip.dataset.lv
+    if (levels.has(lv)) levels.delete(lv)
+    else levels.add(lv)
+    chip.classList.toggle('on', levels.has(lv))
+    redraw()
+  }
+}
+$('sys').onclick = () => {
+  showSys = !showSys
+  $('sys').classList.toggle('on', showSys)
+  redraw()
+}
+$('filter').oninput = e => { filter = e.target.value.toLowerCase(); redraw() }
+$('clear').onclick = () => { logs[active] = new Log(); redraw() }
+$('autoClear').checked = autoClear
+$('autoClear').onchange = () => {
+  autoClear = $('autoClear').checked
+  try { localStorage.setItem('simweb.autoClear', autoClear ? '1' : '0') } catch {}
+}
+</script>
+</body>
+</html>
