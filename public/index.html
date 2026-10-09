@@ -385,10 +385,44 @@ function onDeviceEvent (ev) {
 
 const wsUrl = p => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + p
 
+// The watch's touch is a RELATIVE mouse in qemu: VNC turns our absolute positions into
+// deltas from the last one it saw, and the firmware sums them into its own cursor. Anything
+// lost on the way (the first move after connecting, the pointer leaving the canvas, a clamp at
+// an edge) stays as a permanent offset (measured −116, −113 on a Balance). So on every press,
+// sweep to the far corner and back to 0,0 first: the firmware clamps there, its cursor is
+// exact again, and the press lands under ours.
+function resyncPresses (rfb) {
+  const send = rfb._sendMouse.bind(rfb)
+  const STEP = 50 // ms: the firmware sums deltas that arrive together, which would cancel the sweep
+  let held = 0
+  let sweeping = null // events that arrive mid-sweep, replayed after it
+  rfb._sendMouse = (x, y, mask) => {
+    if (sweeping) return sweeping.push([x, y, mask])
+    if (mask && !held) {
+      sweeping = [[x, y, mask]]
+      const w = rfb._fbWidth - 1
+      const h = rfb._fbHeight - 1
+      ;[[w, h], [0, 0]].forEach(([px, py], i) =>
+        setTimeout(() => RFB.messages.pointerEvent(rfb._sock, px, py, 0), i * STEP))
+      // move under the pointer first, press a step later (as separate firmware samples)
+      setTimeout(() => send(x, y, 0), 2 * STEP)
+      setTimeout(() => {
+        const queued = sweeping
+        sweeping = null
+        for (const [qx, qy, qm] of queued) { held = qm; send(qx, qy, qm) }
+      }, 3 * STEP)
+      return
+    }
+    held = mask
+    send(x, y, mask)
+  }
+}
+
 // Screen. qemu's VNC server only exists once the guest display is up, so retry.
 function connectScreen () {
   const rfb = new RFB($('screen'), wsUrl('/vnc'))
   rfb.scaleViewport = true
+  resyncPresses(rfb)
   rfb.addEventListener('connect', () => { $('status').textContent = 'running' })
   rfb.addEventListener('disconnect', () => {
     $('status').textContent = 'waiting for simulator…'
