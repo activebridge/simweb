@@ -131,7 +131,18 @@
   .picker .i:first-child { color: #38bdf8; }
   .picker select { flex: 1; -webkit-appearance: none; appearance: none; background: transparent; border: 0; color: var(--text); font-size: 16px; padding: 8px 0; outline: none; cursor: pointer; }
   .picker select option { background: #26282d; }
-  #settings { width: 100%; max-width: 390px; height: min(760px, calc(100vh - 70px)); border: 0; border-radius: 24px; background: #fff; }
+  #phoneBody { width: 100%; max-width: 390px; height: min(760px, calc(100vh - 70px)); border-radius: 24px; overflow: hidden; display: flex; flex-direction: column; background: #fff; }
+  #settings { flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
+  /* the Zepp app's own top: Android status bar + its title bar, as on the phone (Dark / Light / Off) */
+  #zframe { flex: none; background: var(--zf-bg); color: var(--zf-fg); font-family: Roboto, system-ui, sans-serif; }
+  #zframe[hidden] { display: none; }
+  #zframe.dark { --zf-bg: #1b1e23; --zf-fg: #fff; }
+  #zframe.light { --zf-bg: #eceef1; --zf-fg: #111; }
+  .zf-status { height: 32px; display: flex; justify-content: space-between; align-items: center; padding: 0 20px 0 22px; font-size: 14px; font-weight: 500; }
+  .zf-status svg { width: 15px; height: 15px; margin-left: 5px; vertical-align: -2px; }
+  .zf-bat { display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 6px; background: var(--zf-fg); color: var(--zf-bg); font-size: 11px; font-weight: 700; }
+  .zf-bar { position: relative; height: 52px; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 500; }
+  .zf-bar svg { position: absolute; left: 14px; width: 24px; height: 24px; }
   #side { display: none; }
   #right { flex: 1 0 420px; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   #bar { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 8px; background: var(--panel); }
@@ -225,6 +236,8 @@
     <div class="seg" id="netMode" style="--c:#fbbf24"><button data-v="online">Online</button><button data-v="slow">Slow +2s</button><button data-v="failing">HTTP 500</button><button data-v="offline">Offline</button></div>
     <div class="chaos-label"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>BLE latency <small class="dim">each watch ↔ phone frame</small></div>
     <div class="seg" id="latency" style="--c:#a78bfa"><button data-v="0">None</button><button data-v="200">200 ms</button><button data-v="1000">1 s</button><button data-v="3000">3 s</button></div>
+    <div class="chaos-label"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M5 7h14"/></svg>Settings frame <small class="dim">the Zepp app's top bar</small></div>
+    <div class="seg" id="frameMode" style="--c:#38bdf8"><button data-v="dark">Dark</button><button data-v="light">Light</button><button data-v="off">Off</button></div>
   </details>
   <div id="mem" hidden title="JS heap of the running app (firmware malloc_size). The bar fills toward the next GC threshold.">
     <div id="memHead"><span>🧠 JS heap <b id="memNow"></b></span><span id="memMeta"></span></div>
@@ -233,8 +246,14 @@
   </div>
 </div>
 <div id="phone" hidden>
-  <div id="phoneHead"><span id="phoneTitle">Settings</span><span><button class="btn icon" id="phoneReload" title="Reload settings">↻</button> <button class="btn icon" id="phoneClose" title="Close settings">✕</button></span></div>
-  <iframe id="settings" title="App settings"></iframe>
+  <div id="phoneHead"><span id="phoneTitle">Settings</span><span><button class="btn icon" id="frameCycle" title="Zepp frame: Dark → Light → Off"></button> <button class="btn icon" id="phoneReload" title="Reload settings">↻</button> <button class="btn icon" id="phoneClose" title="Close settings">✕</button></span></div>
+  <div id="phoneBody">
+    <div id="zframe" class="dark">
+      <div class="zf-status"><span id="zfTime"></span><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 20h3v-4H3zM8.5 20h3v-8h-3zM14 20h3V8h-3zM19.5 20h3V3h-3z"/></svg><span class="zf-bat">54</span></span></div>
+      <div class="zf-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg><span id="zfTitle"></span></div>
+    </div>
+    <iframe id="settings" title="App settings"></iframe>
+  </div>
 </div>
 <iframe id="side" title="Side service"></iframe>
 <div id="right">
@@ -451,6 +470,7 @@ function showSettings () {
   $('phoneOpen').hidden = !has || !settingsClosed
   if (has && !settingsClosed) {
     $('phoneTitle').textContent = (currentApp.name || 'App') + ' settings'
+    $('zfTitle').textContent = currentApp.name || 'App'
     $('settings').src = '/settings.html?appId=' + currentApp.appId + '&t=' + Date.now()
   } else $('settings').src = 'about:blank'
 }
@@ -459,6 +479,23 @@ function setSettingsClosed (closed) {
   try { localStorage.setItem('simweb.settingsClosed', closed ? '1' : '0') } catch {}
   showSettings()
 }
+// Settings frame: the Zepp app's status + title bar over the settings page, Dark by default
+let frameMode = 'dark'
+try { frameMode = localStorage.getItem('simweb.frame') || 'dark' } catch {}
+function drawFrame () {
+  $('zframe').hidden = frameMode === 'off'
+  $('zframe').className = frameMode
+  for (const b of document.querySelectorAll('#frameMode button')) b.classList.toggle('on', b.dataset.v === frameMode)
+  $('frameCycle').textContent = { dark: '◐ Dark', light: '○ Light', off: '▢ Off' }[frameMode]
+}
+$('frameCycle').onclick = () => document.querySelector('#frameMode button[data-v="' + { dark: 'light', light: 'off', off: 'dark' }[frameMode] + '"]').click()
+for (const b of document.querySelectorAll('#frameMode button')) b.onclick = () => {
+  frameMode = b.dataset.v
+  try { localStorage.setItem('simweb.frame', frameMode) } catch {}
+  drawFrame()
+}
+const zfClock = () => { $('zfTime').textContent = new Date().toTimeString().slice(0, 5) }
+zfClock(); setInterval(zfClock, 30000); drawFrame()
 $('phoneClose').onclick = () => setSettingsClosed(true)
 $('phoneOpen').onclick = () => setSettingsClosed(false)
 $('phoneReload').onclick = () => showSettings()

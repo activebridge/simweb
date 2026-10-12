@@ -505,6 +505,16 @@ async function main () {
     const outer = unzipSync(Uint8Array.from(params.data))
     const deviceZip = outer['device.zip']
     if (!deviceZip) throw new Error('package has no device.zip')
+    // the watch's build as installed, for reading a stack trace's line numbers (runDir/device/)
+    try {
+      const out = path.join(runDir, 'device')
+      fs.rmSync(out, { recursive: true, force: true })
+      for (const [name, buf] of Object.entries(unzipSync(deviceZip))) {
+        if (name.endsWith('/')) continue
+        fs.mkdirSync(path.dirname(path.join(out, name)), { recursive: true })
+        fs.writeFileSync(path.join(out, name), buf)
+      }
+    } catch {}
     const appJson = unzipSync(deviceZip, { filter: f => f.name === 'app.json' })['app.json']
     const json = appJson ? JSON.parse(strFromU8(appJson)) : { app: {} }
     const app = json.app

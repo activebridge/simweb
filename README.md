@@ -74,6 +74,8 @@ firmware — and replaces the shell.
   - a **JS heap gauge** under the watch, filling toward the next GC, with a sparkline
 - Repeated lines fold into `×N`; JS errors carry their stack; separators for boot, install,
   side-service start. **Auto-clear** empties the logs on every install.
+- The installed build is unpacked to the run directory's `device/`, so a stack trace's line
+  numbers can be read against the exact code the watch runs.
 
 ### Phone faults
 
@@ -103,6 +105,13 @@ Named `round-1-<app>.png` / `square-1-<app>.png`. **Shift+click** saves the raw 
 Zepp's own side-service and settings pages run in the tab (hidden iframe and a phone-size panel),
 bridged to the watch, storage and the network the way the Electron app does it — but `fetch`
 goes through simweb, so there is no CORS. `settingsStorage` persists in `~/.simweb/storage.json`.
+
+- **Phone frame** over the settings page: the Android status bar and the Zepp app's title bar
+  (back arrow, app name), as on the phone, so you see the room your page really gets.
+  **◐ Dark / ○ Light / ▢ Off** from the button in the panel's header (or Phone → Settings frame);
+  remembered across reloads.
+- **↻** reloads the settings page, **✕** closes the panel (remembered); **Settings** under the
+  watch brings it back freshly loaded, as reopening the settings app on the phone would.
 
 ## Requirements
 
