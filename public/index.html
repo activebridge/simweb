@@ -53,8 +53,9 @@
   #mem[hidden] { display: none; }
   #memHead { display: flex; justify-content: space-between; }
   #memHead b { color: var(--text); font-weight: 600; }
-  #memBar { height: 6px; background: #ffffff12; border-radius: 3px; overflow: hidden; }
-  #memFill { height: 100%; width: 0; background: linear-gradient(90deg, #4fd1c5, #f0b54a 70%, #ff6b6b); background-size: 300px 100%; transition: width .3s; }
+  /* the gradient is the whole bar; the dark cover hides what isn't used yet, from the right */
+  #memBar { height: 6px; background: linear-gradient(90deg, #4fd1c5, #f0b54a 70%, #ff6b6b); border-radius: 3px; overflow: hidden; display: flex; justify-content: flex-end; }
+  #memFill { height: 100%; width: 100%; background: #2a2c31; transition: width .3s; }
   #memSpark { width: 100%; height: 28px; display: block; }
   #status { color: var(--dim); font-size: 12px; }
   #phone { flex: none; width: 422px; padding: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; border-right: 1px solid #000; }
@@ -732,7 +733,7 @@ function drawMem () {
   $('memNow').textContent = mb(i.heap)
   $('memMeta').textContent = (i.threshold ? 'next GC ' + mb(i.threshold) + ' · ' : '') + 'peak ' + mb(i.peak)
   const max = i.threshold > i.heap ? i.threshold : i.peak * 1.25
-  $('memFill').style.width = Math.min(100, (i.heap / max) * 100) + '%'
+  $('memFill').style.width = (100 - Math.min(100, (i.heap / max) * 100)) + '%'
   const h = i.history
   const lo = Math.min(...h) * 0.98
   const hi = Math.max(...h, lo + 1)
