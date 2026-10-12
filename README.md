@@ -125,6 +125,7 @@ goes through simweb, so there is no CORS. `settingsStorage` persists in `~/.simw
 ## Usage
 
 ```sh
+git clone https://github.com/activebridge/simweb.git
 cd simweb && npm install
 node bin/simweb.js                      # or: npm link, then just `simweb`
 ```
@@ -181,3 +182,8 @@ State: `~/.simweb/` (controls, storage, last device).
 
 The firmware images are Zepp's. simweb downloads them from Zepp's public CDN into your local cache
 and runs them on your machine; it does not host or redistribute them.
+
+## License
+
+MIT © Active Bridge LLC. The ZeppOS firmware and the simulator's QEMU are Zepp's and are not
+covered by this license.

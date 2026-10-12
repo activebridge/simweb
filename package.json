@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Browser front end for the ZeppOS simulator (headless QEMU + noVNC)",
+  "license": "MIT",
+  "author": "Active Bridge LLC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activebridge/simweb.git"
+  },
+  "homepage": "https://github.com/activebridge/simweb#readme",
+  "bugs": {
+    "url": "https://github.com/activebridge/simweb/issues"
+  },
   "type": "module",
   "bin": {
     "simweb": "bin/simweb.js"
