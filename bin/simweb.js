@@ -123,7 +123,17 @@ async function downloadDevice (dev, onProgress) {
   await new Promise((resolve, reject) => out.end(err => (err ? reject(err) : resolve())))
   onProgress(total, total)
   const folder = path.basename(new URL(dev.url).pathname).replace(/\..*$/, '')
-  await new Promise((resolve, reject) => spawn('unzip', ['-q', '-o', zip, '-d', CACHE], { stdio: 'ignore' }).on('exit', code => (code ? reject(new Error('unzip failed')) : resolve())))
+  await new Promise((resolve, reject) => {
+    if (process.platform === 'win32') {
+      // Use PowerShell Expand-Archive on Windows (no native unzip)
+      try {
+        execFileSync('powershell.exe', ['-Command', `Expand-Archive -Path "${zip}" -DestinationPath "${CACHE}" -Force`], { stdio: 'ignore' })
+        resolve()
+      } catch (e) { reject(new Error('unzip failed: ' + e.message)) }
+    } else {
+      spawn('unzip', ['-q', '-o', zip, '-d', CACHE], { stdio: 'ignore' }).on('exit', code => (code ? reject(new Error('unzip failed')) : resolve()))
+    }
+  })
   fs.rmSync(zip, { force: true })
   if (folder !== dev.id) {
     fs.rmSync(path.join(CACHE, dev.id), { recursive: true, force: true })
@@ -140,7 +150,11 @@ const CHROMIUM_BINS = ['google-chrome', 'google-chrome-stable', 'chromium', 'chr
 function openWindow (url) {
   const appArgs = [`--app=${url}`, '--window-size=1600,950']
   const run = (cmd, argv) => spawn(cmd, argv, { stdio: 'ignore', detached: true }).unref()
-  if (args.tab) return run(process.platform === 'darwin' ? 'open' : 'xdg-open', [url])
+  if (args.tab) {
+    if (process.platform === 'darwin') return run('open', [url])
+    if (process.platform === 'win32') return run('cmd.exe', ['/c', 'start', '', url])
+    return run('xdg-open', [url])
+  }
   if (process.platform === 'darwin') {
     if (args.browser) return run('open', [String(args.browser).includes('/') ? '-na' : '-nb', String(args.browser), '--args', ...appArgs])
     let id = null
@@ -151,6 +165,28 @@ function openWindow (url) {
     const installed = bid => { try { return !!execFileSync('mdfind', [`kMDItemCFBundleIdentifier == '${bid}'`], { encoding: 'utf8' }).trim() } catch { return false } }
     const pick = CHROMIUM_IDS.includes(id) ? id : CHROMIUM_IDS.find(installed)
     return pick ? run('open', ['-nb', pick, '--args', ...appArgs]) : run('open', [url])
+  }
+  if (process.platform === 'win32') {
+    // Try to find a Chromium-based browser on Windows
+    const winBrowsers = [
+      'chrome.exe',
+      'msedge.exe',
+      'brave.exe',
+      'chromium.exe',
+    ]
+    const programFiles = [
+      process.env.PROGRAMFILES,
+      process.env['PROGRAMFILES(X86)'],
+      process.env.LOCALAPPDATA,
+    ].filter(Boolean)
+    for (const pf of programFiles) {
+      for (const bin of winBrowsers) {
+        const candidate = path.join(pf, bin)
+        if (fs.existsSync(candidate)) return run(candidate, appArgs)
+      }
+    }
+    // Fallback: use start command
+    return run('cmd.exe', ['/c', 'start', '', url])
   }
   const bin = args.browser || CHROMIUM_BINS.find(b => { try { execFileSync('which', [b]); return true } catch { return false } })
   return bin ? run(bin, appArgs) : run('xdg-open', [url])
@@ -170,10 +206,15 @@ function cloneFlash (dev, dir) {
   const flash = path.join(dir, 'norflash.bin')
   const src = path.join(CACHE, dev.id, 'norflash.bin')
   fs.rmSync(flash, { force: true })
-  try {
-    execFileSync('cp', process.platform === 'darwin' ? ['-c', src, flash] : ['--reflink=auto', src, flash])
-  } catch {
+  if (process.platform === 'win32') {
+    // Windows has no reflink/clonefile; just copy
     fs.copyFileSync(src, flash)
+  } else {
+    try {
+      execFileSync('cp', process.platform === 'darwin' ? ['-c', src, flash] : ['--reflink=auto', src, flash])
+    } catch {
+      fs.copyFileSync(src, flash)
+    }
   }
 }
 function prepareRunDir (dev) {
