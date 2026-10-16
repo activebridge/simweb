@@ -151,11 +151,12 @@ goes through simweb, so there is no CORS. `settingsStorage` persists in `~/.simw
 ## 📋 Requirements
 
 - **Zepp Simulator installed** — simweb uses its QEMU binary (`/Applications/simulator.app` on
-  macOS, `/opt/simulator` on Linux). You never have to open it.
-- **Node 18+** and `unzip` (for firmware downloads).
+  macOS, `/opt/simulator` on Linux, `%LOCALAPPDATA%\Programs\simulator` or
+  `%ProgramFiles%\simulator` on Windows). You never have to open it.
+- **Node 18+** and `unzip` (for firmware downloads; Windows 10+ uses its built-in `tar`).
 - **Apple Silicon**: Zepp ships an x86-64 QEMU, so Rosetta must be installed.
 - A Chromium browser (Chrome 135+ for the device picker with images; others get a plain select).
-- Tested on macOS. Linux paths are in place but untested; Windows is not supported yet.
+- Tested on macOS and Windows. Linux paths are in place but untested. Found a bug? Open an issue or PR.
 
 ## 🛠 Usage
 

@@ -49,6 +49,9 @@ const PORT = Number(args.port || 7650)
 const QEMU_CANDIDATES = {
   darwin: ['/Applications/simulator.app/Contents/Resources/firmware/qemu_mac/qemu-system-arm'],
   linux: ['/opt/simulator/resources/firmware/qemu_linux/qemu-system-arm'],
+  // per-user install (default) or all-users install
+  win32: [process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs'), process.env.PROGRAMFILES].filter(Boolean)
+    .map(dir => path.join(dir, 'simulator', 'resources', 'firmware', 'qemu_win', 'qemu-system-arm.exe')),
 }
 
 function parseArgs (argv) {
@@ -123,17 +126,11 @@ async function downloadDevice (dev, onProgress) {
   await new Promise((resolve, reject) => out.end(err => (err ? reject(err) : resolve())))
   onProgress(total, total)
   const folder = path.basename(new URL(dev.url).pathname).replace(/\..*$/, '')
-  await new Promise((resolve, reject) => {
-    if (process.platform === 'win32') {
-      // Use PowerShell Expand-Archive on Windows (no native unzip)
-      try {
-        execFileSync('powershell.exe', ['-Command', `Expand-Archive -Path "${zip}" -DestinationPath "${CACHE}" -Force`], { stdio: 'ignore' })
-        resolve()
-      } catch (e) { reject(new Error('unzip failed: ' + e.message)) }
-    } else {
-      spawn('unzip', ['-q', '-o', zip, '-d', CACHE], { stdio: 'ignore' }).on('exit', code => (code ? reject(new Error('unzip failed')) : resolve()))
-    }
-  })
+  const unzip = process.platform === 'win32'
+    // Windows 10+ ships bsdtar, which reads zip; full path skips Git's GNU tar on PATH
+    ? [path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe'), ['-xf', zip, '-C', CACHE]]
+    : ['unzip', ['-q', '-o', zip, '-d', CACHE]]
+  await new Promise((resolve, reject) => spawn(...unzip, { stdio: 'ignore' }).on('exit', code => (code ? reject(new Error('unzip failed')) : resolve())))
   fs.rmSync(zip, { force: true })
   if (folder !== dev.id) {
     fs.rmSync(path.join(CACHE, dev.id), { recursive: true, force: true })
@@ -166,28 +163,8 @@ function openWindow (url) {
     const pick = CHROMIUM_IDS.includes(id) ? id : CHROMIUM_IDS.find(installed)
     return pick ? run('open', ['-nb', pick, '--args', ...appArgs]) : run('open', [url])
   }
-  if (process.platform === 'win32') {
-    // Try to find a Chromium-based browser on Windows
-    const winBrowsers = [
-      'chrome.exe',
-      'msedge.exe',
-      'brave.exe',
-      'chromium.exe',
-    ]
-    const programFiles = [
-      process.env.PROGRAMFILES,
-      process.env['PROGRAMFILES(X86)'],
-      process.env.LOCALAPPDATA,
-    ].filter(Boolean)
-    for (const pf of programFiles) {
-      for (const bin of winBrowsers) {
-        const candidate = path.join(pf, bin)
-        if (fs.existsSync(candidate)) return run(candidate, appArgs)
-      }
-    }
-    // Fallback: use start command
-    return run('cmd.exe', ['/c', 'start', '', url])
-  }
+  // start resolves chrome/msedge via App Paths; Edge ships with Windows 10/11
+  if (process.platform === 'win32') return run('cmd.exe', ['/c', 'start', '', args.browser || 'msedge', ...appArgs])
   const bin = args.browser || CHROMIUM_BINS.find(b => { try { execFileSync('which', [b]); return true } catch { return false } })
   return bin ? run(bin, appArgs) : run('xdg-open', [url])
 }
