@@ -187,6 +187,9 @@ node bin/simweb.js                      # or: npm link, then just `simweb`
 
 </details>
 
+On macOS, install the page once as an app (**Install simweb…** in the browser's menu) and simweb
+opens that from then on: its own Dock icon and name instead of the browser's. `--browser` skips it.
+
 ## ⚙️ How it works
 
 ```

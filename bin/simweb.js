@@ -142,6 +142,14 @@ async function downloadDevice (dev, onProgress) {
 // Open the page as an app window (no tabs or address bar) in a Chromium browser: the default
 // one if it is Chromium, else the first installed; any other browser gets a normal tab.
 // --browser <bundle id | app path> overrides, --tab forces a plain tab.
+// Installed as a PWA ("Install simweb…" in the browser), its launcher in ~/Applications/<Browser> Apps
+// wins on macOS: own Dock icon and name instead of the browser's.
+const installedApp = () => {
+  const apps = path.join(os.homedir(), 'Applications')
+  let dirs = []
+  try { dirs = fs.readdirSync(apps).filter(d => / Apps(\.localized)?$/.test(d)) } catch {}
+  return dirs.map(d => path.join(apps, d, 'simweb.app')).find(p => fs.existsSync(p))
+}
 const CHROMIUM_IDS = ['com.google.Chrome', 'net.imput.helium', 'org.chromium.Chromium', 'com.brave.Browser', 'com.microsoft.edgemac', 'com.vivaldi.Vivaldi', 'com.operasoftware.Opera']
 const CHROMIUM_BINS = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'brave-browser', 'microsoft-edge']
 function openWindow (url) {
@@ -153,6 +161,9 @@ function openWindow (url) {
     return run('xdg-open', [url])
   }
   if (process.platform === 'darwin') {
+    // The installed app is bound to the default port's origin.
+    const app = !args.browser && !args.port && installedApp()
+    if (app) return run('open', [app])
     if (args.browser) return run('open', [String(args.browser).includes('/') ? '-na' : '-nb', String(args.browser), '--args', ...appArgs])
     let id = null
     try {
