@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // simweb — run the ZeppOS simulator headless and drive it from a browser tab.
-import { spawn, execFileSync } from 'node:child_process'
+import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
@@ -279,6 +279,21 @@ async function main () {
   if (vncPort < 5900) die('no free VNC port')
 
   let proc = null
+  // Firmware the Zepp Simulator did not download itself (simweb's downloads, or old `support`
+  // releases it fetched before patching them) ignores the control socket: no installs, no
+  // screenshots. Its own simfw-patcher fixes that and answers "Already Patched" after — so run
+  // it once per firmware per simweb run, before that firmware's first boot (~2.5 s).
+  const patched = new Set()
+  function patchFirmware (id) {
+    if (patched.has(id)) return
+    patched.add(id)
+    const patcher = path.join(path.dirname(qemu), process.platform === 'win32' ? 'simfw-patcher.exe' : 'simfw-patcher')
+    if (!fs.existsSync(patcher)) return
+    const r = spawnSync(patcher, ['--patch', id], { input: '\n', encoding: 'utf8', timeout: 60000 }) // it waits for ENTER on failure
+    const status = (String(r.stdout || '').replace(/\x1b\[[0-9;]*m/g, '').match(/Status: ([^\n]+)/) || [])[1]
+    console.log('simweb: firmware patch: ' + (status || 'failed'))
+  }
+
   let rebooting = false
   let lastInstall = null // params of the last zeus push, reinstalled after a device switch
   let reinstallAfterBoot = false
@@ -286,6 +301,7 @@ async function main () {
   function boot () {
     if (switchTo) { dev = switchTo; switchTo = null; state.device = dev; cloneFlash(dev, runDir) }
     try { fs.mkdirSync(path.dirname(LAST_DEVICE_FILE), { recursive: true }); fs.writeFileSync(LAST_DEVICE_FILE, JSON.stringify({ id: dev.id })) } catch {}
+    patchFirmware(dev.id)
     console.log(`simweb: booting ${dev.name}`)
     logEntry({ src: 'watch', sep: `booting ${dev.name}` })
     proc = spawn(qemu, qemuArgs(), { cwd: path.dirname(qemu), stdio: ['ignore', 'pipe', 'pipe'] })
