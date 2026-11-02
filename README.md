@@ -44,6 +44,7 @@ zeus dev               # works unchanged: simweb listens where the simulator did
 | 📜 **Readable logs** | Watch, App-side and Settings tabs, app lines only, firmware noise one click away |
 | 🔁 **Decoded messages** | every watch ↔ phone request, response and notify, as JSON |
 | 🧠 **Memory** | heap gauge toward the next GC, load cost per app and page (`+148 KB · 478 ms`) |
+| 🌦 **Watch-face data** | weather, moon, sunrise/sunset, PAI, stand, alarm, Bluetooth — beyond the 8 the Zepp simulator lets you set, and a **Live** mode that keeps them moving |
 | 💥 **Phone faults** | BLE link off, side service killed, network offline / slow / HTTP 500, BLE latency |
 | ⌚ **Any watch** | every model in Zepp's catalog, switch in place, your last push reinstalled |
 | 📸 **Store screenshots** | 360×360 PNGs clipped to the display, ready for the Zepp store |
@@ -61,6 +62,8 @@ firmware — and replaces the shell.
 | Switch watch | pick, wait, push again | picker with device images; reboots on the new firmware and **reinstalls your last push** |
 | Firmware | download dialog | in the picker, with progress and **"update available"** for newer releases |
 | Build for another watch | silently refuses (`inconsistent with the watch simulator model`) | installs it anyway |
+| Older firmware | silently takes no installs until you run its patcher | patched on first boot |
+| Watch-face data | 8 values (heart rate, battery, steps…) | + weather, moon, sunrise/sunset, PAI, stand, alarm, Bluetooth; all 47 firmware keys through the API |
 | Console | one stream, ~2000 firmware lines per boot | Watch / App-side / Settings tabs, app lines only by default, ⚙ to see everything |
 | App-side `console.log` | only in a devtools window | in the App-side tab |
 | Watch ↔ phone messages | invisible | decoded per request/response/notify, JSON pretty-print on click |
@@ -81,7 +84,19 @@ firmware — and replaces the shell.
 - **Controls**: heart rate, battery, calories, steps, charging, lock, 12/24 h, language (34).
   They reach the firmware the same way the Zepp simulator's panels do (watchfaces show the
   battery and charging state you set).
-- **Rest** (screen off) and **Screenshot** (below).
+- **Watch-face data** the Zepp simulator keeps but never lets you change — on screen within
+  seconds, no reboot:
+  - **Weather**: temperature, condition (Zepp's 29 codes), moon phase, sunrise and sunset
+  - **Activity**: PAI, stand hours and goal
+  - **Status**: Bluetooth connected (the "disconnected" banner), alarm on/off and its time
+
+  The firmware reads 47 such keys (SpO2, stress, sleep, distance, floors, humidity, UV, AQI,
+  wind…); the panel has the ones checked on a face, the rest are one API call away (below).
+- **Live**: the values move as on a worn watch, one every 2 s — steps, distance and calories climb,
+  fat burn, PAI, stand and floors slower, heart rate, stress and SpO2 wander, the battery drains
+  (or fills while Charging is on), the temperature drifts. Runs in the helper, so it keeps going
+  with the tab in the background; the panel follows.
+- **Rest** (screen off), **Reboot** (the same watch, booted again) and **Screenshot** (below).
 
 ### 🗂 Devices
 
@@ -89,6 +104,9 @@ firmware — and replaces the shell.
 
 - Every watch in Zepp's public catalog, newest release per model, with its image and resolution.
 - Downloaded firmware lives in `~/.zepp/emulator_cache` — **shared with the Zepp simulator**.
+- Older firmware the simulator never patched (its address predates Simulator 2.x) ignores
+  installs, screenshots and controls without a word. simweb runs the simulator's own
+  `simfw-patcher` on each firmware's first boot (~2.5 s, once per run; a no-op when patched).
 - Switching reboots on the new firmware with a fresh flash and reinstalls the last app `zeus dev`
   pushed. The last watch is remembered for the next start.
 
@@ -187,6 +205,29 @@ node bin/simweb.js                      # or: npm link, then just `simweb`
 
 </details>
 
+<details>
+<summary><b>HTTP API</b> — for scripts (store screenshots, sensor sweeps)</summary>
+
+| Call | |
+|---|---|
+| `GET /api/state` | the running watch, the catalog, the installed app |
+| `POST /api/device {"id"}` | switch watch; the running watch's own id reboots it |
+| `GET /api/screenshot` | the framebuffer as PNG |
+| `POST /api/rest` | screen off |
+| `POST /api/live {"on": true}` | values move, one every 2 s (`live` in `/api/state`) |
+| `GET /api/config` | every control value |
+| `POST /api/config {"vcfg_heartrate": "90"}` | set values; live on the watch |
+| `POST /api/config {"vcfg_spo2": {"type": "int32", "value": "97"}}` | a key not in `~/.simweb/vconfig.json` yet, with its type (`int32`, `bool` or `string`); `null` removes it |
+
+The 47 keys: `heartrate calorie walkstep goal_walkstep goal_calorie battery charge distance pai
+btcon mute alarm alarm_h alarm_m lock temp tempmax tempmin aqi uvi humidity weather sunrise_h
+sunrise_m sunset_h sunset_m window_level window_dir moon_phase f_temphl f_weather f_tempnow f_aqi
+language timeformat baro stand goal_stand sleep_h sleep_m goal_sleep fat_burn goal_fat_burn spo2
+training_load floor stress`, each prefixed `vcfg_`. Their types and defaults are in the Zepp
+simulator's `~/.zepp/userData_cache/vconfig.json`.
+
+</details>
+
 On macOS, install the page once as an app (**Install simweb…** in the browser's menu) and simweb
 opens that from then on: its own Dock icon and name instead of the browser's. `--browser` skips it.
 
@@ -219,7 +260,8 @@ zeus dev ── socket.io ──► install: device.zip ──► "Project insta
 
 - **JS sensors can't be set.** Geolocation (fixed 34.052, 118.252), accelerometer, gyroscope and
   compass come from a generator inside the firmware; barometer returns nothing. Same as the Zepp
-  simulator.
+  simulator. (The firmware also loads `/storage/virtual_sensor_data/fake_data_*.dat` at boot, but
+  nothing reads it back.) Watch-face data (above) is a different layer and can be set.
 - The settings app runs in desktop Chrome, not the phone's WebView (iOS zoom on small inputs,
   blocked downloads etc. won't reproduce).
 - No Zepp developer-bridge (cloud relay) — local `zeus dev` only.

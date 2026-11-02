@@ -342,7 +342,7 @@ async function main () {
     const url = new URL(req.url, 'http://x')
     if (url.pathname === '/api/state') {
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ device: state.device, devices: state.devices, app: appInfo() }))
+      res.end(JSON.stringify({ device: state.device, devices: state.devices, app: appInfo(), live: !!live }))
       return
     }
     if (url.pathname === '/api/config' && req.method === 'GET') {
@@ -355,9 +355,14 @@ async function main () {
       req.on('data', c => { body += c })
       req.on('end', () => {
         try {
+          // Known keys take a bare value. The firmware reads 47 vcfg_ keys (st_vconfig_map in
+          // main.elf; the Zepp simulator's vconfig.json holds all, the defaults above only 8):
+          // a missing one is added with its type, { "vcfg_baro": { "type": "int32", "value":
+          // "1013" } }, and removed with null.
           for (const [key, value] of Object.entries(JSON.parse(body))) {
-            if (!vconfig[key]) continue
-            vconfig[key].value = value
+            if (value === null && !VCONFIG_DEFAULTS[key]) delete vconfig[key]
+            else if (vconfig[key] && (value === null || typeof value !== 'object')) vconfig[key].value = value
+            else if (/^vcfg_\w+$/.test(key) && value && value.type) vconfig[key] = { name: key, type: String(value.type), value: String(value.value) }
           }
           fs.mkdirSync(path.dirname(VCONFIG_FILE), { recursive: true })
           fs.writeFileSync(VCONFIG_FILE, JSON.stringify({ vconfig }))
@@ -417,6 +422,14 @@ async function main () {
       })
       return
     }
+    if (url.pathname === '/api/live' && req.method === 'POST') {
+      let body = ''
+      req.on('data', c => { body += c })
+      req.on('end', () => {
+        try { setLive(!!JSON.parse(body).on); res.writeHead(204).end() } catch (err) { res.writeHead(400).end(err.message) }
+      })
+      return
+    }
     if (url.pathname === '/api/rest' && req.method === 'POST') {
       fwSend(JSON.stringify({ method: 'ScreenRest' }))
       res.writeHead(204).end()
@@ -473,6 +486,64 @@ async function main () {
   const bridgeWss = new WebSocketServer({ noServer: true, maxPayload: 1e9 })
 
   let vconfig = loadVconfig()
+
+  // Live data: the values move as on a worn watch — steps, distance, calories climb; fat burn,
+  // PAI, stand, floors slower; heart rate, stress, SpO2 wander; battery drains (fills while
+  // charging); the temperature drifts. ONE data type per frame, every 2 s: several changing in
+  // one frame fire their change events together, which overruns the firmware's message manager
+  // ("event data content maybe override" → configASSERT, frozen; Balance sim 2026-11-02). The
+  // Zepp simulator only ever changes one slider at a time. 2 s because the firmware checks for
+  // changes every ~1.27 s: faster, two frames could land in one check. Saved on stop.
+  let live = null
+  let liveTurn = 0
+  let liveSteps = { distance: 0, calorie: 0 } // steps not yet turned into distance / calories
+  const LIVE_MS = 2000
+  const val = (key, d) => { const n = parseFloat(vconfig[key]?.value); return isNaN(n) ? d : n }
+  const setVal = (key, type, v) => {
+    if (vconfig[key] && String(vconfig[key].value) === String(v)) return false
+    vconfig[key] = { ...(vconfig[key] || { name: key, type }), value: String(v) }
+    return true
+  }
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+  const rand = (lo, hi) => lo + Math.random() * (hi - lo)
+  const LIVE = {
+    steps: () => {
+      const n = Math.round(rand(40, 150))
+      liveSteps.distance += n
+      liveSteps.calorie += n
+      return setVal('vcfg_walkstep', 'int32', val('vcfg_walkstep', 0) + n)
+    },
+    heart: () => setVal('vcfg_heartrate', 'int32', Math.round(clamp(val('vcfg_heartrate', 75) + rand(-6, 6) + (85 - val('vcfg_heartrate', 75)) * 0.1, 55, 160))),
+    distance: () => { const n = liveSteps.distance; liveSteps.distance = 0; return setVal('vcfg_distance', 'int32', Math.round(val('vcfg_distance', 0) + n * 0.75)) },
+    calorie: () => { // a string key; whole kcal only, the rest waits for the next turn
+      const kcal = Math.floor(liveSteps.calorie * 0.05)
+      liveSteps.calorie -= kcal / 0.05
+      return setVal('vcfg_calorie', 'string', val('vcfg_calorie', 0) + kcal)
+    },
+    stress: () => setVal('vcfg_stress', 'int32', Math.round(clamp(val('vcfg_stress', 30) + rand(-3, 3), 5, 90))),
+    spo2: () => setVal('vcfg_spo2', 'int32', Math.round(rand(95, 99.9))),
+    // the slow ones move on every turn too (~36 s), so a short session shows them
+    floor: () => setVal('vcfg_floor', 'int32', val('vcfg_floor', 0) + 1),
+    battery: () => setVal('vcfg_battery', 'int32', clamp(val('vcfg_battery', 88) + (String(vconfig.vcfg_charge?.value) === 'true' ? 3 : -1), 1, 100)),
+    fatBurn: () => setVal('vcfg_fat_burn', 'int32', val('vcfg_fat_burn', 0) + 1),
+    temp: () => setVal('vcfg_temp', 'int32', clamp(val('vcfg_temp', 20) + (Math.random() < 0.5 ? -1 : 1), -30, 45)),
+    pai: () => setVal('vcfg_pai', 'int32', val('vcfg_pai', 0) + 1),
+    stand: () => setVal('vcfg_stand', 'int32', (val('vcfg_stand', 0) + 1) % 25),
+  }
+  // steps and heart rate come round most often
+  const LIVE_ORDER = ['steps', 'heart', 'distance', 'steps', 'calorie', 'heart', 'steps', 'stress', 'battery',
+    'steps', 'heart', 'spo2', 'steps', 'floor', 'fatBurn', 'steps', 'temp', 'pai', 'stand']
+  function liveStep () {
+    const name = LIVE_ORDER[liveTurn++ % LIVE_ORDER.length]
+    if (LIVE[name]()) fwSend(configFrame(vconfig))
+  }
+  function setLive (on) {
+    if (!on === !live) return
+    if (on) { live = setInterval(liveStep, LIVE_MS); return }
+    clearInterval(live)
+    live = null
+    try { fs.mkdirSync(path.dirname(VCONFIG_FILE), { recursive: true }); fs.writeFileSync(VCONFIG_FILE, JSON.stringify({ vconfig })) } catch {}
+  }
   const shotWaiters = []
   function screenshot () {
     return new Promise((resolve, reject) => {
